@@ -1,3 +1,6 @@
+'use client';
+
+import * as React from "react";
 import {
     CameraController,
     EDrawMeshAs,
@@ -13,33 +16,23 @@ import {
     TooltipModifier3D,
     UniformGridDataSeries3D,
     Vector3,
-    zeroArray2D
+    SciChartSurface
 } from "scichart";
 
+// Set the WASM location before any chart initializations
+// This is fine outside of components because it's not a hook
 
 
+// Drawing functions
 export const drawExample = async (rootElement: string | HTMLDivElement) => {
-    // Null check for rootElement
-    if (!rootElement) {
-        throw new Error('Root element is required');
-    }
-
     // Create a SciChart3DSurface
-    const { sciChart3DSurface, wasmContext } = await SciChart3DSurface.create(rootElement, {
-
-    });
-
-    // Null checks for critical objects
-    if (!sciChart3DSurface || !wasmContext) {
-        throw new Error('Failed to create SciChart3DSurface');
-    }
+    const { sciChart3DSurface, wasmContext } = await SciChart3DSurface.create(rootElement, {});
 
     // Create and position the camera in the 3D world
     sciChart3DSurface.camera = new CameraController(wasmContext, {
         position: new Vector3(-200, 150, 200),
         target: new Vector3(0, 50, 0),
     });
-
     // Set the worlddimensions, which defines the Axis cube size
     sciChart3DSurface.worldDimensions = new Vector3(200, 100, 200);
 
@@ -51,16 +44,16 @@ export const drawExample = async (rootElement: string | HTMLDivElement) => {
     });
     sciChart3DSurface.zAxis = new NumericAxis3D(wasmContext, { axisTitle: "Z Axis" });
 
-    // Create a 2D array with robust initialization
+    // Create a 2D array with robust initialization and fill with data
     const zSize = 25;
     const xSize = 25;
-    const heightmapArray: number[][] = Array(zSize).fill(null).map(() =>
-        Array(xSize).fill(0)
+    const heightmapArray: number[][] = Array(zSize).fill(null).map((_, z) =>
+        Array(xSize).fill(0).map((_, x) => {
+            const xVal = (x / xSize) * 25.0;
+            const zVal = (z / zSize) * 25.0;
+            return Math.sin(xVal * 0.2) / ((zVal + 1) * 2);
+        })
     );
-
-
-    // Ensure the array is not empty
-
 
     // Create a UniformGridDataSeries3D
     const dataSeries = new UniformGridDataSeries3D(wasmContext, {
@@ -82,11 +75,6 @@ export const drawExample = async (rootElement: string | HTMLDivElement) => {
             { offset: 0, color: "#191970" },      // Dark Indigo
         ],
     });
-
-    // Null check for dataSeries and colorMap
-    if (!dataSeries || !colorMap) {
-        throw new Error('Failed to create data series or color map');
-    }
 
     // Finally, create a SurfaceMeshRenderableSeries3D and add to the chart
     const series = new SurfaceMeshRenderableSeries3D(wasmContext, {
@@ -110,11 +98,6 @@ export const drawExample = async (rootElement: string | HTMLDivElement) => {
         isVisible: true,
     });
 
-    // Null check for series
-    if (!series) {
-        throw new Error('Failed to create surface mesh series');
-    }
-
     sciChart3DSurface.renderableSeries.add(series);
 
     // Optional: Add some interactivity modifiers
@@ -129,13 +112,7 @@ export const drawExample = async (rootElement: string | HTMLDivElement) => {
 };
 
 export const drawHeatmapLegend = async (rootElement: string | HTMLDivElement) => {
-    // Null check for rootElement
-    if (!rootElement) {
-        throw new Error('Root element is required');
-    }
-
     const { heatmapLegend, wasmContext } = await HeatmapLegend.create(rootElement, {
-
         yAxisOptions: {
             isInnerAxis: true,
             labelStyle: {
@@ -172,10 +149,64 @@ export const drawHeatmapLegend = async (rootElement: string | HTMLDivElement) =>
         },
     });
 
-    // Null check for heatmapLegend and its surface
-    if (!heatmapLegend || !heatmapLegend.innerSciChartSurface) {
-        throw new Error('Failed to create heatmap legend');
-    }
-
     return { sciChartSurface: heatmapLegend.innerSciChartSurface.sciChartSurface };
 };
+
+// REACT COMPONENT
+export default function SurfaceMesh3DChart() {
+    const chartRef = React.useRef<HTMLDivElement>(null);
+    const legendRef = React.useRef<HTMLDivElement>(null);
+    const [chart, setChart] = React.useState<any>(null);
+    const [legend, setLegend] = React.useState<any>(null);
+
+    // Initialize license when component mounts
+    React.useEffect(() => {
+        // This is the correct place to call UseCommunityLicense
+        SciChartSurface.UseCommunityLicense();
+    }, []);
+
+    React.useEffect(() => {
+        // Initialize chart and legend when component mounts
+        if (chartRef.current && !chart) {
+            drawExample(chartRef.current).then(result => {
+                setChart(result);
+            }).catch(error => {
+                console.error("Failed to initialize chart:", error);
+            });
+        }
+
+        if (legendRef.current && !legend) {
+            drawHeatmapLegend(legendRef.current).then(result => {
+                setLegend(result);
+            }).catch(error => {
+                console.error("Failed to initialize legend:", error);
+            });
+        }
+
+        // Cleanup when component unmounts
+        return () => {
+            if (chart?.sciChartSurface) {
+                chart.sciChartSurface.delete();
+            }
+            if (legend?.sciChartSurface) {
+                legend.sciChartSurface.delete();
+            }
+        };
+    }, [chart, legend]);
+
+    return (
+        <div className="relative h-[400px] w-full">
+            <div ref={chartRef} style={{ height: "100%", width: "100%" }} />
+            <div
+                ref={legendRef}
+                style={{
+                    position: "absolute",
+                    height: "100%",
+                    width: "65px",
+                    top: "0px",
+                    right: "0px"
+                }}
+            />
+        </div>
+    );
+}
